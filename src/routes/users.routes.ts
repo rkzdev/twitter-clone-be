@@ -1,31 +1,73 @@
-import { Router } from "express";
+import { Elysia, t, NotFoundError } from "elysia";
+import { db } from "../server";
+import { users } from "../db/schema";
+import { eq } from "drizzle-orm";
 
-export const userRoutes = Router();
+export const userRoutes = new Elysia({ prefix: "/users" });
 
-// Create user
-userRoutes.post("/", (req, res) => {
-  res.status(501).json({ error: "Not Implemented" });
+userRoutes.get("/", async () => {
+  const result = await db.select().from(users).all();
+
+  return result;
 });
 
-// List users
-userRoutes.get("/", (req, res) => {
-  res.status(501).json({ error: "Not Implemented" });
+userRoutes.post(
+  "/",
+  (c) => {
+    const body = c.body;
+
+    return body;
+  },
+  {
+    body: t.Object({
+      name: t.String(),
+      email: t.String(),
+    }),
+  },
+);
+
+userRoutes.get("/:id", async (c) => {
+  const id = c.params.id;
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, +id))
+    .limit(1);
+
+  if (result.length < 1) {
+    throw new NotFoundError("entity not found.");
+  }
+
+  return result[0];
 });
 
-// Get single user
-userRoutes.get("/:id", (req, res) => {
-  const { id } = req.params;
-  res.status(501).json({ error: `Not Implemented: ${id}` });
-});
+userRoutes.patch(
+  "/:id",
+  async (c) => {
+    const id = c.params.id;
 
-// Update single user
-userRoutes.patch("/:id", (req, res) => {
-  const { id } = req.params;
-  res.status(501).json({ error: `Not Implemented: ${id}` });
-});
+    let result = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, +id))
+      .limit(1);
 
-// Delete user
-userRoutes.delete("/:id", (req, res) => {
-  const { id } = req.params;
-  res.status(501).json({ error: `Not implemented: ${id}` });
-});
+    if (result.length < 1) {
+      throw new NotFoundError("entity not found.");
+    }
+
+    result = await db
+      .update(users)
+      .set({ username: c.body.username })
+      .where(eq(users.id, +id))
+      .returning();
+
+    return result;
+  },
+  {
+    body: t.Object({
+      username: t.String(),
+    }),
+  },
+);

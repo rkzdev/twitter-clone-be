@@ -1,24 +1,53 @@
-import { drizzle, BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import Database from "bun:sqlite";
-import express from "express";
-import * as schema from "./db/schema";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { tweetRoutes, userRoutes } from "./routes";
+import { Elysia } from "elysia";
+import { drizzle } from "drizzle-orm/libsql";
+import { createClient } from "@libsql/client";
+import { userRoutes } from "./routes";
 
-const sqlite = new Database("sqlite.db", { create: true });
-export const db: BunSQLiteDatabase<typeof schema> = drizzle(sqlite, {
-  schema: schema,
+export const db = drizzle(createClient({ url: "file:./local.db" }));
+
+export const app = new Elysia().onError(({ error, code, set }) => {
+  switch (code) {
+    case "NOT_FOUND": {
+      set.status = 404;
+      return {
+        message: error.message,
+        statusCode: set.status,
+      };
+    }
+    case "VALIDATION": {
+      set.status = 422;
+
+      const validationErrors = new Map<string, string[]>();
+
+      error.all.forEach((val) => {
+        if (val.type === 45) {
+          const fieldName = val.path.slice(1);
+
+          if (validationErrors.has(fieldName)) {
+            let currentValues = validationErrors.get(fieldName);
+
+            if (currentValues) {
+              validationErrors.set(fieldName, [
+                ...currentValues,
+                error.message,
+              ]);
+            }
+          } else {
+            validationErrors.set(fieldName, [val.message]);
+          }
+        }
+      });
+
+      return {
+        message: error.model,
+        statusCode: set.status,
+      };
+    }
+  }
 });
-migrate(db, { migrationsFolder: "drizzle" });
 
-export const port = 8080;
+app.use(userRoutes);
 
-export const app = express();
-app.use(express.json());
-
-app.use("/users", userRoutes);
-app.use("/tweets", tweetRoutes);
-
-app.get("/", (req, res) => {
-  res.send("Hello World");
+app.listen(process.env.PORT ?? 8000, ({ port }) => {
+  console.log(`Server listening on port: ${port}`);
 });
